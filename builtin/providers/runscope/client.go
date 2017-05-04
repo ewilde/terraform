@@ -20,6 +20,24 @@ type Client struct {
 	Http        *http.Client
 }
 
+type Bucket struct {
+	Id   string
+	Name string
+	Team Team
+}
+
+type Team struct {
+	Name string
+	Id   string
+}
+
+type Test struct {
+	Id            string `json:"id,omitempty"`
+	BucketId      string `json:"-"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+}
+
 type response struct {
 	Meta  metaResponse           `json:"meta"`
 	Data  map[string]interface{} `json:"data"`
@@ -51,22 +69,13 @@ func NewClient(apiUrl string, accessToken string) *Client {
 	return &client
 }
 
-type Bucket struct {
-	Id   string
-	Name string
-	Team Team
-}
-
-type Team struct {
-	Name string
-	Id   string
-}
-
 func (client *Client) CreateBucket(bucket Bucket) (string, error) {
-
+	log.Printf("[DEBUG] creating bucket %s", bucket.Name)
 	data := url.Values{}
 	data.Add("name", bucket.Name)
 	data.Add("team_uuid", bucket.Team.Id)
+
+	log.Printf("[DEBUG] 	request: POST %s %#v", "/buckets", data)
 
 	req, err := client.newFormUrlEncodedRequest("POST", "/buckets", data)
 	if err != nil {
@@ -81,7 +90,7 @@ func (client *Client) CreateBucket(bucket Bucket) (string, error) {
 
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
-	log.Printf("[DEBUG] %s", bodyString)
+	log.Printf("[DEBUG] 	response: %d %s", resp.StatusCode, bodyString)
 
 	if resp.StatusCode >= 300 {
 		errorResp := new(errorResponse)
@@ -99,9 +108,85 @@ func (client *Client) CreateBucket(bucket Bucket) (string, error) {
 }
 
 func (client *Client) ReadBucket(key string) (response, error) {
+	resource, error := client.readResource(response{}, "bucket", key, fmt.Sprintf("/buckets/%s", key))
+	return resource.(response), error
+}
+
+func (client *Client) DeleteBucket(key string) error {
+	return client.deleteResource("bucket", key, fmt.Sprintf("/buckets/%s", key))
+}
+
+func (client *Client) CreateTest(test Test) (Test, error) {
+	id, error := client.createResource(test, "test", test.Name, "id",
+		fmt.Sprintf("/buckets/%s/tests", test.BucketId))
+	if error != nil {
+		return test, error
+	}
+
+	test.Id = id
+	return test, nil
+}
+
+func (client *Client) ReadTest(test Test) (response, error) {
+	resource, error := client.readResource(response{}, "test", test.Id, fmt.Sprintf("/buckets/%s/tests/%s", test.BucketId, test.Id))
+	return resource.(response), error
+}
+
+func (client *Client) UpdateTest(test Test) (response, error) {
+	resource, error := client.updateResource(test, "test", test.Id, fmt.Sprintf("/buckets/%s/tests/%s", test.BucketId, test.Id))
+	return resource.(response), error
+}
+
+func (client *Client) DeleteTest(test Test) error {
+	return client.deleteResource("test", test.Id, fmt.Sprintf("/buckets/%s/tests/%s", test.BucketId, test.Id))
+}
+
+func (client *Client) createResource(
+	resource interface{}, resourceType string, resourceName string, resourceIdFieldName string, endpoint string) (string, error) {
+	log.Printf("[DEBUG] creating %s %s", resourceType, resourceName)
+
+	bytes, err := json.Marshal(resource)
+	if err != nil {
+		return "", err
+	}
+
+	log.Printf("[DEBUG] 	request: POST %s %s", endpoint, string(bytes))
+
+	req, err := client.newRequest("POST", endpoint, bytes)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyString := string(bodyBytes)
+	log.Printf("[DEBUG] 	response: %d %s", resp.StatusCode, bodyString)
+
+	if resp.StatusCode >= 300 {
+		errorResp := new(errorResponse)
+		if err = json.Unmarshal(bodyBytes, &errorResp); err != nil {
+			return "", fmt.Errorf("Error creating %s: %s", resourceType, resourceName)
+		} else {
+			return "", fmt.Errorf("Error creating %s: %s, status: %d reason: %q", resourceType,
+				resourceName, errorResp.Status, errorResp.ErrorMessage)
+		}
+	} else {
+		response := new(response)
+		json.Unmarshal(bodyBytes, &response)
+		return response.Data[resourceIdFieldName].(string), nil
+	}
+}
+
+func (client *Client) readResource(resource interface{}, resourceType string, resourceName string, endpoint string) (interface{}, error) {
+	log.Printf("[DEBUG] reading %s %s", resourceType, resourceName)
 	response := response{}
 
-	req, err := client.newRequest("GET", fmt.Sprintf("/buckets/%s", key), nil)
+	req, err := client.newRequest("GET", endpoint, nil)
 	if err != nil {
 		return response, err
 	}
@@ -114,16 +199,16 @@ func (client *Client) ReadBucket(key string) (response, error) {
 
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	bodyString := string(bodyBytes)
-	log.Printf("[DEBUG] %s", bodyString)
+	log.Printf("[DEBUG] %d %s", resp.StatusCode, bodyString)
 
 	if resp.StatusCode >= 300 {
 		errorResp := new(errorResponse)
 		if err = json.Unmarshal(bodyBytes, &errorResp); err != nil {
-			return response, fmt.Errorf("Status: %s Error reading bucket: %s",
-				resp.Status, key)
+			return response, fmt.Errorf("Status: %s Error reading %s: %s",
+				resp.Status, resourceType, resourceName)
 		} else {
-			return response, fmt.Errorf("Status: %s Error reading bucket: %s, reason: %q",
-				resp.Status, key, errorResp.ErrorMessage)
+			return response, fmt.Errorf("Status: %s Error reading %s: %s, reason: %q",
+				resp.Status, resourceType, resourceName, errorResp.ErrorMessage)
 		}
 	} else {
 		json.Unmarshal(bodyBytes, &response)
@@ -131,31 +216,72 @@ func (client *Client) ReadBucket(key string) (response, error) {
 	}
 }
 
-func (client *Client) DeleteBucket(key string) error {
+func (client *Client) updateResource(resource interface{}, resourceType string, resourceName string, endpoint string) (interface{}, error) {
+	log.Printf("[DEBUG] updating %s %s", resourceType, resourceName)
+	response := response{}
+	bytes, err := json.Marshal(resource)
+	if err != nil {
+		return "", err
+	}
 
-	req, err := client.newRequest("DELETE", fmt.Sprintf("/buckets/%s", key), nil)
+	log.Printf("[DEBUG] 	request: PUT %s %s", endpoint, string(bytes))
+	req, err := client.newRequest("PUT", endpoint, bytes)
+	if err != nil {
+		return response, err
+	}
+
+	resp, err := client.Http.Do(req)
+	if err != nil {
+		return response, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyString := string(bodyBytes)
+	log.Printf("[DEBUG] 	response: %d %s", resp.StatusCode, bodyString)
+
+	if resp.StatusCode >= 300 {
+		errorResp := new(errorResponse)
+		if err = json.Unmarshal(bodyBytes, &errorResp); err != nil {
+			return response, fmt.Errorf("Status: %s Error reading %s: %s",
+				resp.Status, resourceType, resourceName)
+		} else {
+			return response, fmt.Errorf("Status: %s Error reading %s: %s, reason: %q",
+				resp.Status, resourceType, resourceName, errorResp.ErrorMessage)
+		}
+	} else {
+		json.Unmarshal(bodyBytes, &response)
+		return response, nil
+	}
+}
+
+func (client *Client) deleteResource(resourceType string, resourceName string, endpoint string) (error) {
+	log.Printf("[DEBUG] deleting %s %s", resourceType, resourceName)
+	req, err := client.newRequest("DELETE", endpoint, nil)
 	if err != nil {
 		return err
 	}
 
+	log.Printf("[DEBUG] 	request: DELETE %s", endpoint)
 	resp, err := client.Http.Do(req)
+	log.Printf("[DEBUG] 	response: %d", resp.StatusCode)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 && resp.StatusCode != 204 {
-		errorResp := new(errorResponse)
-
+	if resp.StatusCode >= 300 {
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
 		bodyString := string(bodyBytes)
 		log.Printf("[DEBUG] %s", bodyString)
 
+		errorResp := new(errorResponse)
 		if err = json.Unmarshal(bodyBytes, &errorResp); err != nil {
-			return fmt.Errorf("Error creating bucket: %s", key)
+			return fmt.Errorf("Status: %s Error deleting %s: %s",
+				resp.Status, resourceType, resourceName)
 		} else {
-			return fmt.Errorf("Error creating bucket: %s, status: %d reason: %q", key,
-				errorResp.Status, errorResp.ErrorMessage)
+			return fmt.Errorf("Status: %s Error deleting %s: %s, reason: %q",
+				resp.Status, resourceType, resourceName, errorResp.ErrorMessage)
 		}
 	}
 

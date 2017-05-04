@@ -7,51 +7,57 @@ import (
 	"strings"
 )
 
-func resourceRunscopeBucket() *schema.Resource {
+func resourceRunscopeTest() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceBucketCreate,
-		Read:   resourceBucketRead,
-		Delete: resourceBucketDelete,
+		Create: resourceTestCreate,
+		Read:   resourceTestRead,
+		Update: resourceTestUpdate,
+		Delete: resourceTestDelete,
 
 		Schema: map[string]*schema.Schema{
+			"bucket_id": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"team_uuid": &schema.Schema{
+			"description": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
-				ForceNew: true,
+				ForceNew: false,
 			},
 		},
 	}
 }
 
-func resourceBucketCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceTestCreate(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Client)
 
 	name := d.Get("name").(string)
-	log.Printf("[INFO] Creating bucket for name: %s", name)
+	log.Printf("[INFO] Creating test with name: %s", name)
 
-	bucket, err := createBucketFromResourceData(d)
+	test, err := createTestFromResourceData(d)
 	if err != nil {
 		return err
 	}
-	log.Printf("[DEBUG] bucket create: %#v", bucket)
+	log.Printf("[DEBUG] test create: %#v", test)
 
-	result, err := client.CreateBucket(bucket)
+	result, err := client.CreateTest(test)
 	if err != nil {
-		return fmt.Errorf("Failed to create bucket: %s", err)
+		return fmt.Errorf("Failed to create test: %s", err)
 	}
 
-	d.SetId(result)
-	log.Printf("[INFO] bucket key: %s", d.Id())
+	d.SetId(result.Id)
+	log.Printf("[INFO] test ID: %s", d.Id())
 
 	return resourceBucketRead(d, meta)
 }
 
-func resourceBucketRead(d *schema.ResourceData, meta interface{}) error {
+func resourceTestRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Client)
 
 	key := d.Id()
@@ -73,7 +79,11 @@ func resourceBucketRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourceBucketDelete(d *schema.ResourceData, meta interface{}) error {
+func resourceTestUpdate(d *schema.ResourceData, meta interface{}) error {
+	return nil
+}
+
+func resourceTestDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Client)
 
 	key := d.Id()
@@ -87,15 +97,20 @@ func resourceBucketDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func createBucketFromResourceData(d *schema.ResourceData) (Bucket, error) {
+func createTestFromResourceData(d *schema.ResourceData) (Test, error) {
 
-	bucket := Bucket{}
+	test := Test{}
+	if attr, ok := d.GetOk("bucket_id"); ok {
+		test.BucketId = attr.(string)
+	}
+
 	if attr, ok := d.GetOk("name"); ok {
-		bucket.Name = attr.(string)
-	}
-	if attr, ok := d.GetOk("team_uuid"); ok {
-		bucket.Team = Team{Id: attr.(string)}
+		test.Name = attr.(string)
 	}
 
-	return bucket, nil
+	if attr, ok := d.GetOk("description"); ok {
+		test.Description = attr.(string)
+	}
+
+	return test, nil
 }
