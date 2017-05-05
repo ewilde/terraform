@@ -2,6 +2,7 @@ package runscope
 
 import (
 	"fmt"
+	"github.com/ewilde/go-runscope"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 	"os"
@@ -80,8 +81,9 @@ func testAccCheckBucketExists(n string, bucketResponse *response) resource.TestC
 	}
 }
 
-const testRunscopeBucketConfigA = `
-resource "runscope_bucket" "test" {
+const testRunscopeTestConfigA = `
+resource "runscope_test" "test" {
+  bucket_id = "${runscope_bucket.}"
   name = "terraform-provider-test"
   team_uuid = "%s"
 }`
