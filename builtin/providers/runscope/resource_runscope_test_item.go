@@ -92,7 +92,7 @@ func resourceTestDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func createTestFromResourceData(d *schema.ResourceData) (runscope.Test, error) {
+func createTestFromResourceData(d *schema.ResourceData) (*runscope.Test, error) {
 
 	test := runscope.NewTest()
 	test.Id = d.Id()
@@ -108,5 +108,5 @@ func createTestFromResourceData(d *schema.ResourceData) (runscope.Test, error) {
 		test.Description = attr.(string)
 	}
 
-	return *test, nil
+	return test, nil
 }

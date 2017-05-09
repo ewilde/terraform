@@ -40,7 +40,7 @@ func testAccCheckTestDestroy(s *terraform.State) error {
 			continue
 		}
 
-		_, err := client.ReadTest(runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
+		_, err := client.ReadTest(&runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
 
 		if err == nil {
 			return fmt.Errorf("Record %s still exists", rs.Primary.ID)
@@ -64,7 +64,7 @@ func testAccCheckTestExists(n string, test *runscope.Test) resource.TestCheckFun
 
 		client := testAccProvider.Meta().(*runscope.Client)
 
-		foundRecord, err := client.ReadTest(runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
+		foundRecord, err := client.ReadTest(&runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
 
 		if err != nil {
 			return err
