@@ -12,7 +12,6 @@ func resourceRunscopeTest() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceTestCreate,
 		Read:   resourceTestRead,
-		Update: resourceTestUpdate,
 		Delete: resourceTestDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -29,14 +28,14 @@ func resourceRunscopeTest() *schema.Resource {
 			"description": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
-				ForceNew: false,
+				ForceNew: true,
 			},
 		},
 	}
 }
 
 func resourceTestCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
 	name := d.Get("name").(string)
 	log.Printf("[INFO] Creating test with name: %s", name)
@@ -47,62 +46,58 @@ func resourceTestCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 	log.Printf("[DEBUG] test create: %#v", test)
 
-	result, err := client.CreateTest(test)
+	createdTest, err := client.CreateTest(test)
 	if err != nil {
 		return fmt.Errorf("Failed to create test: %s", err)
 	}
 
-	d.SetId(result.Id)
+	d.SetId(createdTest.Id)
 	log.Printf("[INFO] test ID: %s", d.Id())
 
-	return resourceBucketRead(d, meta)
+	return resourceTestRead(d, meta)
 }
 
 func resourceTestRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
-	key := d.Id()
-	name := d.Get("name").(string)
-	log.Printf("[INFO] Reading bucket for id: %s name: %s", key, name)
-
-	bucket, err := client.ReadBucket(key)
+	testFromResource, err := createTestFromResourceData(d)
+	test, err := client.ReadTest(testFromResource)
 	if err != nil {
-		if strings.Contains(err.Error(), "403") {
+		if strings.Contains(err.Error(), "404") {
 			d.SetId("")
 			return nil
 		}
 
-		return fmt.Errorf("Couldn't find bucket: %s", err)
+		return fmt.Errorf("Couldn't find test: %s", err)
 	}
 
-	d.Set("name", bucket.Data["name"])
-	d.Set("team_uuid", bucket.Data["team"].(map[string]interface{})["id"])
-	return nil
-}
-
-func resourceTestUpdate(d *schema.ResourceData, meta interface{}) error {
+	d.Set("name", test.Name)
+	d.Set("description", test.Description)
 	return nil
 }
 
 func resourceTestDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
-	key := d.Id()
-	name := d.Get("name").(string)
-	log.Printf("[INFO] Deleting bucket with key: %s name: %s", key, name)
+	test, err := createTestFromResourceData(d)
+	if err != nil {
+		return fmt.Errorf("Error deleting test: %s", err)
+	}
+	log.Printf("[INFO] Deleting test with id: %s name: %s", test.Id, test.Name)
 
-	if err := client.DeleteBucket(key); err != nil {
-		return fmt.Errorf("Error deleting bucket: %s", err)
+	if err := client.DeleteTest(test); err != nil {
+		return fmt.Errorf("Error deleting test: %s", err)
 	}
 
 	return nil
 }
 
-func createTestFromResourceData(d *schema.ResourceData) (Test, error) {
+func createTestFromResourceData(d *schema.ResourceData) (runscope.Test, error) {
 
-	test := Test{}
+	test := runscope.NewTest()
+	test.Id = d.Id()
 	if attr, ok := d.GetOk("bucket_id"); ok {
-		test.BucketId = attr.(string)
+		test.Bucket.Key = attr.(string)
 	}
 
 	if attr, ok := d.GetOk("name"); ok {
@@ -113,5 +108,5 @@ func createTestFromResourceData(d *schema.ResourceData) (Test, error) {
 		test.Description = attr.(string)
 	}
 
-	return test, nil
+	return *test, nil
 }

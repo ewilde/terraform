@@ -9,39 +9,38 @@ import (
 	"testing"
 )
 
-var _ = fmt.Sprintf("dummy") // dummy
-var _ = os.DevNull           // dummy
-
-func TestAccBucket_basic(t *testing.T) {
-	var bucketResponse response
+func TestAccTest_basic(t *testing.T) {
+	var test runscope.Test
 	teamId := os.Getenv("RUNSCOPE_TEAM_ID")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckBucketDestroy,
+		CheckDestroy: testAccCheckTestDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: fmt.Sprintf(testRunscopeBucketConfigA, teamId),
+			{
+				Config: fmt.Sprintf(testRunscopeTestConfigA, teamId),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBucketExists("runscope_bucket.test", &bucketResponse),
+					testAccCheckTestExists("runscope_test.test", &test),
 					resource.TestCheckResourceAttr(
-						"runscope_bucket.test", "name", "terraform-provider-test"),
+						"runscope_test.test", "name", "runscope test"),
+					resource.TestCheckResourceAttr(
+						"runscope_test.test", "description", "This is a test test..."),
 				),
 			},
 		},
 	})
 }
 
-func testAccCheckBucketDestroy(s *terraform.State) error {
-	client := testAccProvider.Meta().(*Client)
+func testAccCheckTestDestroy(s *terraform.State) error {
+	client := testAccProvider.Meta().(*runscope.Client)
 
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "runscope_bucket" {
+		if rs.Type != "runscope_test" {
 			continue
 		}
 
-		_, err := client.ReadBucket(rs.Primary.ID)
+		_, err := client.ReadTest(runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
 
 		if err == nil {
 			return fmt.Errorf("Record %s still exists", rs.Primary.ID)
@@ -51,7 +50,7 @@ func testAccCheckBucketDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckBucketExists(n string, bucketResponse *response) resource.TestCheckFunc {
+func testAccCheckTestExists(n string, test *runscope.Test) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 
@@ -63,19 +62,19 @@ func testAccCheckBucketExists(n string, bucketResponse *response) resource.TestC
 			return fmt.Errorf("No Record ID is set")
 		}
 
-		client := testAccProvider.Meta().(*Client)
+		client := testAccProvider.Meta().(*runscope.Client)
 
-		foundRecord, err := client.ReadBucket(rs.Primary.ID)
+		foundRecord, err := client.ReadTest(runscope.Test{Id: rs.Primary.ID, Bucket: &runscope.Bucket{Key: rs.Primary.Attributes["bucket_id"]}})
 
 		if err != nil {
 			return err
 		}
 
-		if foundRecord.Data["key"] != rs.Primary.ID {
+		if foundRecord.Id != rs.Primary.ID {
 			return fmt.Errorf("Record not found")
 		}
 
-		*bucketResponse = foundRecord
+		test = foundRecord
 
 		return nil
 	}
@@ -83,7 +82,13 @@ func testAccCheckBucketExists(n string, bucketResponse *response) resource.TestC
 
 const testRunscopeTestConfigA = `
 resource "runscope_test" "test" {
-  bucket_id = "${runscope_bucket.}"
+  bucket_id = "${runscope_bucket.bucket.id}"
+  name = "runscope test"
+  description = "This is a test test..."
+}
+
+resource "runscope_bucket" "bucket" {
   name = "terraform-provider-test"
   team_uuid = "%s"
-}`
+}
+`

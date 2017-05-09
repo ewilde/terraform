@@ -30,7 +30,7 @@ func resourceRunscopeBucket() *schema.Resource {
 }
 
 func resourceBucketCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
 	name := d.Get("name").(string)
 	log.Printf("[INFO] Creating bucket for name: %s", name)
@@ -41,19 +41,19 @@ func resourceBucketCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 	log.Printf("[DEBUG] bucket create: %#v", bucket)
 
-	result, err := client.CreateBucket(bucket)
+	createdBucket, err := client.CreateBucket(bucket)
 	if err != nil {
 		return fmt.Errorf("Failed to create bucket: %s", err)
 	}
 
-	d.SetId(result)
+	d.SetId(createdBucket.Key)
 	log.Printf("[INFO] bucket key: %s", d.Id())
 
 	return resourceBucketRead(d, meta)
 }
 
 func resourceBucketRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
 	key := d.Id()
 	name := d.Get("name").(string)
@@ -69,13 +69,13 @@ func resourceBucketRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Couldn't find bucket: %s", err)
 	}
 
-	d.Set("name", bucket.Data["name"])
-	d.Set("team_uuid", bucket.Data["team"].(map[string]interface{})["id"])
+	d.Set("name", bucket.Name)
+	d.Set("team_uuid", bucket.Team.Id)
 	return nil
 }
 
 func resourceBucketDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*Client)
+	client := meta.(*runscope.Client)
 
 	key := d.Id()
 	name := d.Get("name").(string)
@@ -88,14 +88,14 @@ func resourceBucketDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func createBucketFromResourceData(d *schema.ResourceData) (Bucket, error) {
+func createBucketFromResourceData(d *schema.ResourceData) (runscope.Bucket, error) {
 
-	bucket := Bucket{}
+	bucket := runscope.Bucket{}
 	if attr, ok := d.GetOk("name"); ok {
 		bucket.Name = attr.(string)
 	}
 	if attr, ok := d.GetOk("team_uuid"); ok {
-		bucket.Team = Team{Id: attr.(string)}
+		bucket.Team = runscope.Team{Id: attr.(string)}
 	}
 
 	return bucket, nil

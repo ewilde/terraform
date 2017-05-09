@@ -1,6 +1,7 @@
 package runscope
 
 import (
+	"github.com/ewilde/go-runscope"
 	"log"
 )
 
@@ -10,8 +11,8 @@ type Config struct {
 	ApiUrl      string
 }
 
-func (c *Config) Client() (*Client, error) {
-	client := NewClient(c.ApiUrl, c.AccessToken)
+func (c *Config) Client() (*runscope.Client, error) {
+	client := runscope.NewClient(c.ApiUrl, c.AccessToken)
 
 	log.Printf("[INFO] runscope client configured for server %s", c.ApiUrl)
 

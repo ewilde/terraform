@@ -27,6 +27,7 @@ func Provider() terraform.ResourceProvider {
 
 		ResourcesMap: map[string]*schema.Resource{
 			"runscope_bucket": resourceRunscopeBucket(),
+			"runscope_test":   resourceRunscopeTest(),
 		},
 
 		ConfigureFunc: providerConfigure,
