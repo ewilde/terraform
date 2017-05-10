@@ -12,6 +12,7 @@ func resourceRunscopeTest() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceTestCreate,
 		Read:   resourceTestRead,
+		Update: resourceTestUpdate,
 		Delete: resourceTestDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -28,7 +29,7 @@ func resourceRunscopeTest() *schema.Resource {
 			"description": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
-				ForceNew: true,
+				ForceNew: false,
 			},
 		},
 	}
@@ -42,8 +43,9 @@ func resourceTestCreate(d *schema.ResourceData, meta interface{}) error {
 
 	test, err := createTestFromResourceData(d)
 	if err != nil {
-		return err
+		return fmt.Errorf("Failed to create test: %s", err)
 	}
+
 	log.Printf("[DEBUG] test create: %#v", test)
 
 	createdTest, err := client.CreateTest(test)
@@ -61,6 +63,10 @@ func resourceTestRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*runscope.Client)
 
 	testFromResource, err := createTestFromResourceData(d)
+	if err != nil {
+		return fmt.Errorf("Error reading test: %s", err)
+	}
+
 	test, err := client.ReadTest(testFromResource)
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
@@ -73,6 +79,25 @@ func resourceTestRead(d *schema.ResourceData, meta interface{}) error {
 
 	d.Set("name", test.Name)
 	d.Set("description", test.Description)
+	return nil
+}
+
+func resourceTestUpdate(d *schema.ResourceData, meta interface{}) error {
+	d.Partial(false)
+	testFromResource, err := createTestFromResourceData(d)
+	if err != nil {
+		return fmt.Errorf("Error updating test: %s", err)
+	}
+
+	if d.HasChange("description") {
+		client := meta.(*runscope.Client)
+		_, err = client.UpdateTest(testFromResource)
+
+		if err != nil {
+			return fmt.Errorf("Error updating test: %s", err)
+		}
+	}
+
 	return nil
 }
 
