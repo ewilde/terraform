@@ -6,12 +6,14 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"log"
 	"strings"
+	"github.com/satori/uuid"
 )
 
 func resourceRunscopeEnvironment() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceEnvironmentCreate,
 		Read:   resourceEnvironmentRead,
+		Update: resourceEnvironmentUpdate,
 		Delete: resourceEnvironmentDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -22,13 +24,50 @@ func resourceRunscopeEnvironment() *schema.Resource {
 			},
 			"test_id": &schema.Schema{
 				Type:     schema.TypeString,
-				Required: false,
+				Optional: true,
 				ForceNew: true,
 			},
 			"name": &schema.Schema{
 				Type:     schema.TypeString,
 				Required: true,
-				ForceNew: true,
+				ForceNew: false,
+			},
+			"script": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: false,
+			},
+			"preserve_cookies": &schema.Schema{
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: false,
+			},
+			"initial_variables": &schema.Schema{
+				Type:     schema.TypeMap,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+				Optional: true,
+				ForceNew: false,
+			},
+			"integrations": &schema.Schema{
+				Type: schema.TypeList,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"id": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  uuid.NewV4().String(),
+						},
+						"integration_type": &schema.Schema{
+							Type:     schema.TypeString,
+							Required: true,
+						},
+						"description": &schema.Schema{
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+					},
+				},
+				Optional: true,
 			},
 		},
 	}
@@ -51,7 +90,7 @@ func resourceEnvironmentCreate(d *schema.ResourceData, meta interface{}) error {
 	test_id := d.Get("test_id").(string)
 	if sharedEnvironment(d) {
 		createdEnvironment, err = client.CreateTestEnvironment(environment,
-			&runscope.Test{Id: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+			&runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
 	} else {
 		createdEnvironment, err = client.CreateSharedEnvironment(environment,
 			&runscope.Bucket{Key: bucket_id})
@@ -60,7 +99,7 @@ func resourceEnvironmentCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Failed to create environment: %s", err)
 	}
 
-	d.SetId(createdEnvironment.Id)
+	d.SetId(createdEnvironment.ID)
 	log.Printf("[INFO] environment ID: %s", d.Id())
 
 	return resourceEnvironmentRead(d, meta)
@@ -83,7 +122,7 @@ func resourceEnvironmentRead(d *schema.ResourceData, meta interface{}) error {
 			environmentFromResource, &runscope.Bucket{Key: bucket_id})
 	} else {
 		environment, err = client.ReadTestEnvironment(
-			environmentFromResource, &runscope.Test{Id: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+			environmentFromResource, &runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
 	}
 
 	if err != nil {
@@ -99,6 +138,35 @@ func resourceEnvironmentRead(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
+func resourceEnvironmentUpdate(d *schema.ResourceData, meta interface{}) error {
+	d.Partial(false)
+	environment, err := createEnvironmentFromResourceData(d)
+	if err != nil {
+		return fmt.Errorf("Error updating environment: %s", err)
+	}
+
+
+	change := d.HasChange("name")
+	if change {
+		client := meta.(*runscope.Client)
+		bucket_id := d.Get("bucket_id").(string)
+		test_id := d.Get("test_id").(string)
+		if sharedEnvironment(d) {
+			_, err = client.UpdateSharedEnvironment(
+				environment, &runscope.Bucket{Key: bucket_id})
+		} else {
+			_, err = client.UpdateTestEnvironment(
+				environment, &runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+		}
+		if err != nil {
+			return fmt.Errorf("Error updating test: %s", err)
+		}
+	}
+
+	return nil
+}
+
+
 func resourceEnvironmentDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*runscope.Client)
 
@@ -113,14 +181,14 @@ func resourceEnvironmentDelete(d *schema.ResourceData, meta interface{}) error {
 
 	if sharedEnvironment(d) {
 		log.Printf("[INFO] Deleting shared environment with id: %s name: %s",
-			environment.Id, environment.Name)
+			environment.ID, environment.Name)
 		environment, err = client.ReadSharedEnvironment(
 			environmentFromResource, &runscope.Bucket{Key: bucketId})
 	} else {
 		log.Printf("[INFO] Deleting shared environment with id: %s name: %s, from test %s",
-			environment.Id, environment.Name, testId)
+			environment.ID, environment.Name, testId)
 		environment, err = client.ReadTestEnvironment(
-			environmentFromResource, &runscope.Test{Id: testId, Bucket: &runscope.Bucket{Key: bucketId}})
+			environmentFromResource, &runscope.Test{ID: testId, Bucket: &runscope.Bucket{Key: bucketId}})
 	}
 
 	if err != nil {
@@ -133,10 +201,47 @@ func resourceEnvironmentDelete(d *schema.ResourceData, meta interface{}) error {
 func createEnvironmentFromResourceData(d *schema.ResourceData) (*runscope.Environment, error) {
 
 	environment := runscope.NewEnvironment()
-	environment.Id = d.Id()
+	environment.ID = d.Id()
 
 	if attr, ok := d.GetOk("name"); ok {
 		environment.Name = attr.(string)
+	}
+
+	if attr, ok := d.GetOk("test_id"); ok {
+		environment.TestID = attr.(string)
+	}
+
+	if attr, ok := d.GetOk("script"); ok {
+		environment.Script = attr.(string)
+	}
+
+	if attr, ok := d.GetOk("preserve_cookies"); ok {
+		environment.PreserveCookies = attr.(bool)
+	}
+
+	if attr, ok := d.GetOk("initial_variables"); ok {
+		variablesRaw := attr.(map[string]interface{})
+		variables := map[string]string{}
+		for k, v := range variablesRaw {
+			variables[k] = v.(string)
+		}
+
+		environment.InitialVariables = variables
+	}
+
+	if attr, ok := d.GetOk("integrations"); ok {
+		integrations := []runscope.Integration{}
+		items := attr.([]interface{})
+		for _, x := range items {
+			item := x.(map[string]interface{})
+			integration := runscope.Integration{
+				ID:              item["id"].(string),
+				Description:     item["description"].(string),
+				IntegrationType: item["integration_type"].(string),
+			}
+
+			integrations = append(integrations, integration)
+		}
 	}
 
 	return environment, nil

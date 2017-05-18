@@ -20,12 +20,14 @@ func floatToTimeDurationHookFunc() mapstructure.DecodeHookFunc {
 		}
 
 		// Convert it by parsing
-		value := int64(data.(float64))
-		return time.Unix(value, 0), nil
+		rawValue := data.(float64)
+		seconds := int64(rawValue)
+		nanoSeconds := int64((rawValue - float64(int64(rawValue)))*1e9)
+		return time.Unix(seconds, nanoSeconds), nil
 	}
 }
 
-func Decode(result interface{}, response interface{}) error {
+func decode(result interface{}, response interface{}) error {
 
 	config := &mapstructure.DecoderConfig{
 		Metadata: nil,

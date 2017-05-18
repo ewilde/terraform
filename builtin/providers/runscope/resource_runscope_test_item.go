@@ -53,7 +53,7 @@ func resourceTestCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Failed to create test: %s", err)
 	}
 
-	d.SetId(createdTest.Id)
+	d.SetId(createdTest.ID)
 	log.Printf("[INFO] test ID: %s", d.Id())
 
 	return resourceTestRead(d, meta)
@@ -108,7 +108,7 @@ func resourceTestDelete(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return fmt.Errorf("Error deleting test: %s", err)
 	}
-	log.Printf("[INFO] Deleting test with id: %s name: %s", test.Id, test.Name)
+	log.Printf("[INFO] Deleting test with id: %s name: %s", test.ID, test.Name)
 
 	if err := client.DeleteTest(test); err != nil {
 		return fmt.Errorf("Error deleting test: %s", err)
@@ -120,7 +120,7 @@ func resourceTestDelete(d *schema.ResourceData, meta interface{}) error {
 func createTestFromResourceData(d *schema.ResourceData) (*runscope.Test, error) {
 
 	test := runscope.NewTest()
-	test.Id = d.Id()
+	test.ID = d.Id()
 	if attr, ok := d.GetOk("bucket_id"); ok {
 		test.Bucket.Key = attr.(string)
 	}

@@ -70,7 +70,7 @@ func resourceBucketRead(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	d.Set("name", bucket.Name)
-	d.Set("team_uuid", bucket.Team.Id)
+	d.Set("team_uuid", bucket.Team.ID)
 	return nil
 }
 
@@ -88,15 +88,15 @@ func resourceBucketDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func createBucketFromResourceData(d *schema.ResourceData) (runscope.Bucket, error) {
+func createBucketFromResourceData(d *schema.ResourceData) (*runscope.Bucket, error) {
 
 	bucket := runscope.Bucket{}
 	if attr, ok := d.GetOk("name"); ok {
 		bucket.Name = attr.(string)
 	}
 	if attr, ok := d.GetOk("team_uuid"); ok {
-		bucket.Team = runscope.Team{Id: attr.(string)}
+		bucket.Team = &runscope.Team{ID: attr.(string)}
 	}
 
-	return bucket, nil
+	return &bucket, nil
 }
