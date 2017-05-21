@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"github.com/ewilde/go-runscope"
 	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/satori/uuid"
 	"log"
 	"strings"
-	"github.com/satori/uuid"
 )
 
 func resourceRunscopeEnvironment() *schema.Resource {
@@ -86,14 +86,13 @@ func resourceEnvironmentCreate(d *schema.ResourceData, meta interface{}) error {
 	log.Printf("[DEBUG] environment create: %#v", environment)
 
 	var createdEnvironment *runscope.Environment
-	bucket_id := d.Get("bucket_id").(string)
-	test_id := d.Get("test_id").(string)
-	if sharedEnvironment(d) {
+	bucketId := d.Get("bucket_id").(string)
+	if testId, ok := d.GetOk("test_id"); ok {
 		createdEnvironment, err = client.CreateTestEnvironment(environment,
-			&runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+			&runscope.Test{ID: testId.(string), Bucket: &runscope.Bucket{Key: bucketId}})
 	} else {
 		createdEnvironment, err = client.CreateSharedEnvironment(environment,
-			&runscope.Bucket{Key: bucket_id})
+			&runscope.Bucket{Key: bucketId})
 	}
 	if err != nil {
 		return fmt.Errorf("Failed to create environment: %s", err)
@@ -114,15 +113,13 @@ func resourceEnvironmentRead(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	var environment *runscope.Environment
-	bucket_id := d.Get("bucket_id").(string)
-	test_id := d.Get("test_id").(string)
-
-	if sharedEnvironment(d) {
-		environment, err = client.ReadSharedEnvironment(
-			environmentFromResource, &runscope.Bucket{Key: bucket_id})
-	} else {
+	bucketId := d.Get("bucket_id").(string)
+	if testId, ok := d.GetOk("test_id"); ok {
 		environment, err = client.ReadTestEnvironment(
-			environmentFromResource, &runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+			environmentFromResource, &runscope.Test{ID: testId.(string), Bucket: &runscope.Bucket{Key: bucketId}})
+	} else {
+		environment, err = client.ReadSharedEnvironment(
+			environmentFromResource, &runscope.Bucket{Key: bucketId})
 	}
 
 	if err != nil {
@@ -134,7 +131,13 @@ func resourceEnvironmentRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Couldn't find environment: %s", err)
 	}
 
+	d.Set("bucket_id", bucketId)
+	d.Set("test_id", d.Get("test_id").(string))
 	d.Set("name", environment.Name)
+	d.Set("script", environment.Script)
+	d.Set("preserve_cookies", environment.PreserveCookies)
+	d.Set("initial_variables", environment.InitialVariables)
+	d.Set("integrations", readIntegrations(environment.Integrations))
 	return nil
 }
 
@@ -145,18 +148,16 @@ func resourceEnvironmentUpdate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Error updating environment: %s", err)
 	}
 
-
 	change := d.HasChange("name")
 	if change {
 		client := meta.(*runscope.Client)
-		bucket_id := d.Get("bucket_id").(string)
-		test_id := d.Get("test_id").(string)
-		if sharedEnvironment(d) {
-			_, err = client.UpdateSharedEnvironment(
-				environment, &runscope.Bucket{Key: bucket_id})
-		} else {
+		bucketId := d.Get("bucket_id").(string)
+		if testId, ok := d.GetOk("test_id"); ok {
 			_, err = client.UpdateTestEnvironment(
-				environment, &runscope.Test{ID: test_id, Bucket: &runscope.Bucket{Key: bucket_id}})
+				environment, &runscope.Test{ID: testId.(string), Bucket: &runscope.Bucket{Key: bucketId}})
+		} else {
+			_, err = client.UpdateSharedEnvironment(
+				environment, &runscope.Bucket{Key: bucketId})
 		}
 		if err != nil {
 			return fmt.Errorf("Error updating test: %s", err)
@@ -166,7 +167,6 @@ func resourceEnvironmentUpdate(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-
 func resourceEnvironmentDelete(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*runscope.Client)
 
@@ -175,20 +175,17 @@ func resourceEnvironmentDelete(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Failed to read environment from resource data: %s", err)
 	}
 
-	var environment *runscope.Environment
 	bucketId := d.Get("bucket_id").(string)
-	testId := d.Get("test_id").(string)
-
-	if sharedEnvironment(d) {
-		log.Printf("[INFO] Deleting shared environment with id: %s name: %s",
-			environment.ID, environment.Name)
-		environment, err = client.ReadSharedEnvironment(
-			environmentFromResource, &runscope.Bucket{Key: bucketId})
+	if testId, ok := d.GetOk("test_id"); ok {
+		log.Printf("[INFO] Deleting test environment with id: %s name: %s, from test %s",
+			environmentFromResource.ID, environmentFromResource.Name, testId.(string))
+		err = client.DeleteTestEnvironment(
+			environmentFromResource, &runscope.Test{ID: testId.(string), Bucket: &runscope.Bucket{Key: bucketId}})
 	} else {
-		log.Printf("[INFO] Deleting shared environment with id: %s name: %s, from test %s",
-			environment.ID, environment.Name, testId)
-		environment, err = client.ReadTestEnvironment(
-			environmentFromResource, &runscope.Test{ID: testId, Bucket: &runscope.Bucket{Key: bucketId}})
+		log.Printf("[INFO] Deleting shared environment with id: %s name: %s",
+			environmentFromResource.ID, environmentFromResource.Name)
+		err = client.DeleteSharedEnvironment(
+			environmentFromResource, &runscope.Bucket{Key: bucketId})
 	}
 
 	if err != nil {
@@ -230,7 +227,7 @@ func createEnvironmentFromResourceData(d *schema.ResourceData) (*runscope.Enviro
 	}
 
 	if attr, ok := d.GetOk("integrations"); ok {
-		integrations := []runscope.Integration{}
+		integrations := []*runscope.Integration{}
 		items := attr.([]interface{})
 		for _, x := range items {
 			item := x.(map[string]interface{})
@@ -240,14 +237,27 @@ func createEnvironmentFromResourceData(d *schema.ResourceData) (*runscope.Enviro
 				IntegrationType: item["integration_type"].(string),
 			}
 
-			integrations = append(integrations, integration)
+			integrations = append(integrations, &integration)
 		}
+
+		environment.Integrations = integrations
 	}
 
 	return environment, nil
 }
 
-func sharedEnvironment(d *schema.ResourceData) bool {
-	return len(d.Get("bucket_id").(string)) > 0 &&
-		len(d.Get("test_id").(string)) > 0
+func readIntegrations(integrations []*runscope.Integration) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(integrations))
+	for _, integration := range integrations {
+
+		item := map[string]interface{}{
+			"id":               integration.ID,
+			"integration_type": integration.IntegrationType,
+			"description":      integration.Description,
+		}
+
+		result = append(result, item)
+	}
+
+	return result
 }

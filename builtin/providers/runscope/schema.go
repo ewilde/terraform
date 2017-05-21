@@ -1,8 +1,8 @@
 package runscope
 
 import (
-	"github.com/hashicorp/terraform/helper/schema"
 	"fmt"
+	"github.com/hashicorp/terraform/helper/schema"
 )
 
 func validateValueFunc(values []string) schema.SchemaValidateFunc {

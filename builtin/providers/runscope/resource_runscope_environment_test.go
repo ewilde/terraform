@@ -4,14 +4,22 @@ import (
 	"fmt"
 	"github.com/ewilde/go-runscope"
 	"github.com/hashicorp/terraform/helper/resource"
+	"github.com/hashicorp/terraform/terraform"
 	"os"
 	"testing"
-	"github.com/hashicorp/terraform/terraform"
 )
 
 func TestAccEnvironment_basic(t *testing.T) {
 	var environment runscope.Environment
 	teamId := os.Getenv("RUNSCOPE_TEAM_ID")
+
+	testCheck := func(*terraform.State) error {
+		if len(environment.Integrations) != 2 {
+			return fmt.Errorf("Expected %d integrations, actual %d", 2, len(environment.Integrations))
+		}
+
+		return nil
+	}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -22,8 +30,10 @@ func TestAccEnvironment_basic(t *testing.T) {
 				Config: fmt.Sprintf(testRunscopeEnvrionmentConfigA, teamId),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckEnvironmentExists("runscope_environment.environment", &environment),
+					testCheck,
 					resource.TestCheckResourceAttr(
 						"runscope_environment.environment", "name", "test-environment")),
+
 			},
 		},
 	})
@@ -39,14 +49,15 @@ func testAccCheckEnvironmentDestroy(s *terraform.State) error {
 
 		var err error
 		bucketId := rs.Primary.Attributes["bucket_id"]
-		if test_id, ok := rs.Primary.Attributes["test_id"]; ok {
-			err = client.DeleteTestEnvironment(&runscope.Environment{ ID: rs.Primary.ID},
+		testId := rs.Primary.Attributes["test_id"]
+		if testId != "" {
+			err = client.DeleteTestEnvironment(&runscope.Environment{ID: rs.Primary.ID},
 				&runscope.Test{
-					ID: test_id,
-					Bucket: &runscope.Bucket{ Key: bucketId }})
+					ID:     testId,
+					Bucket: &runscope.Bucket{Key: bucketId}})
 		} else {
-			err = client.DeleteSharedEnvironment(&runscope.Environment{ ID: rs.Primary.ID},
-				&runscope.Bucket{ Key: bucketId })
+			err = client.DeleteSharedEnvironment(&runscope.Environment{ID: rs.Primary.ID},
+				&runscope.Bucket{Key: bucketId})
 		}
 
 		if err == nil {
@@ -74,15 +85,17 @@ func testAccCheckEnvironmentExists(n string, environment *runscope.Environment) 
 		var foundRecord *runscope.Environment
 		var err error
 
+		environment.ID = rs.Primary.ID
 		bucketId := rs.Primary.Attributes["bucket_id"]
-		if test_id, ok := rs.Primary.Attributes["test_id"]; ok {
+		testId := rs.Primary.Attributes["test_id"]
+		if testId != "" {
 			foundRecord, err = client.ReadTestEnvironment(environment,
 				&runscope.Test{
-					ID: test_id,
-					Bucket: &runscope.Bucket{ Key: bucketId }})
+					ID:     testId,
+					Bucket: &runscope.Bucket{Key: bucketId}})
 		} else {
 			foundRecord, err = client.ReadSharedEnvironment(environment,
-				&runscope.Bucket{ Key: bucketId })
+				&runscope.Bucket{Key: bucketId})
 		}
 
 		if err != nil {
