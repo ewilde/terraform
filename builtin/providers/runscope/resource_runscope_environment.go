@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/ewilde/go-runscope"
 	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/satori/uuid"
 	"log"
 	"strings"
 )
@@ -54,8 +53,7 @@ func resourceRunscopeEnvironment() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"id": &schema.Schema{
 							Type:     schema.TypeString,
-							Optional: true,
-							Default:  uuid.NewV4().String(),
+							Required: true,
 						},
 						"integration_type": &schema.Schema{
 							Type:     schema.TypeString,
@@ -63,7 +61,7 @@ func resourceRunscopeEnvironment() *schema.Resource {
 						},
 						"description": &schema.Schema{
 							Type:     schema.TypeString,
-							Optional: true,
+							Computed: true,
 						},
 					},
 				},
@@ -227,13 +225,12 @@ func createEnvironmentFromResourceData(d *schema.ResourceData) (*runscope.Enviro
 	}
 
 	if attr, ok := d.GetOk("integrations"); ok {
-		integrations := []*runscope.Integration{}
+		integrations := []*runscope.EnvironmentIntegration{}
 		items := attr.([]interface{})
 		for _, x := range items {
 			item := x.(map[string]interface{})
-			integration := runscope.Integration{
+			integration := runscope.EnvironmentIntegration{
 				ID:              item["id"].(string),
-				Description:     item["description"].(string),
 				IntegrationType: item["integration_type"].(string),
 			}
 
@@ -246,7 +243,7 @@ func createEnvironmentFromResourceData(d *schema.ResourceData) (*runscope.Enviro
 	return environment, nil
 }
 
-func readIntegrations(integrations []*runscope.Integration) []map[string]interface{} {
+func readIntegrations(integrations []*runscope.EnvironmentIntegration) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(integrations))
 	for _, integration := range integrations {
 

@@ -10,27 +10,16 @@ import (
 )
 
 func TestAccEnvironment_basic(t *testing.T) {
-	var environment runscope.Environment
 	teamId := os.Getenv("RUNSCOPE_TEAM_ID")
-
-	testCheck := func(*terraform.State) error {
-		if len(environment.Integrations) != 2 {
-			return fmt.Errorf("Expected %d integrations, actual %d", 2, len(environment.Integrations))
-		}
-
-		return nil
-	}
-
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckEnvironmentDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: fmt.Sprintf(testRunscopeEnvrionmentConfigA, teamId),
+				Config: fmt.Sprintf(testRunscopeEnvrionmentConfigA, teamId, teamId),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckEnvironmentExists("runscope_environment.environment", &environment),
-					testCheck,
+					testAccCheckEnvironmentExists("runscope_environment.environment"),
 					resource.TestCheckResourceAttr(
 						"runscope_environment.environment", "name", "test-environment")),
 
@@ -68,7 +57,7 @@ func testAccCheckEnvironmentDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckEnvironmentExists(n string, environment *runscope.Environment) resource.TestCheckFunc {
+func testAccCheckEnvironmentExists(n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[n]
 
@@ -85,6 +74,7 @@ func testAccCheckEnvironmentExists(n string, environment *runscope.Environment) 
 		var foundRecord *runscope.Environment
 		var err error
 
+		environment := new(runscope.Environment)
 		environment.ID = rs.Primary.ID
 		bucketId := rs.Primary.Attributes["bucket_id"]
 		testId := rs.Primary.Attributes["test_id"]
@@ -106,7 +96,10 @@ func testAccCheckEnvironmentExists(n string, environment *runscope.Environment) 
 			return fmt.Errorf("Record not found")
 		}
 
-		environment = foundRecord
+		if len(foundRecord.Integrations) != 1 {
+			return fmt.Errorf("Expected %d integrations, actual %d", 1, len(environment.Integrations))
+		}
+
 		return nil
 	}
 }
@@ -118,12 +111,8 @@ resource "runscope_environment" "environment" {
 
   integrations = [
     {
+      id               = "${data.runscope_integration.pagerduty.id}"
       integration_type = "pagerduty"
-      description      = "alert on call"
-    },
-    {
-      integration_type = "slack"
-      description      = "post to slack"
     }
   ]
 
@@ -142,5 +131,10 @@ resource "runscope_test" "test" {
 resource "runscope_bucket" "bucket" {
   name = "terraform-provider-test"
   team_uuid = "%s"
+}
+
+data "runscope_integration" "pagerduty" {
+  team_uuid = "%s"
+  type = "pagerduty"
 }
 `
