@@ -22,7 +22,6 @@ func TestAccEnvironment_basic(t *testing.T) {
 					testAccCheckEnvironmentExists("runscope_environment.environment"),
 					resource.TestCheckResourceAttr(
 						"runscope_environment.environment", "name", "test-environment")),
-
 			},
 		},
 	})

@@ -33,6 +33,7 @@ func Provider() terraform.ResourceProvider {
 			"runscope_bucket":      resourceRunscopeBucket(),
 			"runscope_test":        resourceRunscopeTest(),
 			"runscope_environment": resourceRunscopeEnvironment(),
+			"runscope_schedule":    resourceRunscopeSchedule(),
 		},
 
 		ConfigureFunc: providerConfigure,
